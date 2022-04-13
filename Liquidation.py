@@ -26,7 +26,7 @@ clearinghouse_viewer_contract = web3.eth.contract(address=clearinghouse_viewer['
 
 # Setup wallet from keyfile
 with open(f'./{os.getenv("KEYFILE")}') as keyfile:
-    account = Account.from_key(web3.eth.account.decrypt(keyfile.read(), ''))#getpass.getpass()))
+    account = Account.from_key(web3.eth.account.decrypt(keyfile.read(), getpass.getpass()))
     print('Password accepted')
 
 transaction_dict = {
