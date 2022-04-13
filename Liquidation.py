@@ -14,7 +14,7 @@ load_dotenv('.env')
 
 # This RPC should ideally be localhost
 rpc_url = os.getenv('RPC')
-web3 = Web3(Web3.WebsocketProvider(rpc_url))
+web3 = Web3(Web3.WebsocketProvider(rpc_url, websocket_timeout=60))
 
 with open(f'./contract-details/{web3.eth.chainId}/ClearingHouse.json', 'r') as clearinghouse_json:
     clearinghouse = json.load(clearinghouse_json)
@@ -28,7 +28,7 @@ clearinghouse_viewer_contract = web3.eth.contract(address=clearinghouse_viewer['
 # Setup wallet from keyfile
 with open(f'./{os.getenv("KEYFILE")}') as keyfile:
     account = Account.from_key(web3.eth.account.decrypt(keyfile.read(), getpass.getpass()))
-    print('Password accepted')
+    print(f'Password accepted, using account {account.address}')
 
 transaction_dict = {
     'chainId': web3.eth.chainId,
