@@ -5,6 +5,7 @@ import os
 import getpass
 
 from web3 import Web3, Account
+from web3.middleware import geth_poa_middleware
 from dotenv import load_dotenv, dotenv_values
 
 from UserPosition import UserPosition
@@ -15,6 +16,9 @@ load_dotenv('.env')
 # This RPC should ideally be localhost
 rpc_url = os.getenv('RPC')
 web3 = Web3(Web3.WebsocketProvider(rpc_url, websocket_timeout=60))
+
+if web3.eth.chainId == 4:
+    web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
 with open(f'./contract-details/{web3.eth.chainId}/ClearingHouse.json', 'r') as clearinghouse_json:
     clearinghouse = json.load(clearinghouse_json)
