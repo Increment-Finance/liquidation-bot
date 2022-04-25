@@ -98,17 +98,43 @@ def main():
         extend_positions = extend_position_filter.get_new_entries()
         reduce_positions = reduce_position_filter.get_new_entries()
 
-        for position_extended in extend_positions:
-            args = position_extended['args']
-            position = UserPosition(args['idx'], args['user'])
-            if position not in position_list:
-                position_list.append(position)
-            position_list[position_list.index(position)].AddToPosition(args['addedPositionSize'])
- 
-        for position_reduced in reduce_positions:
-            args = position_reduced['args']
-            position = UserPosition(args['idx'], args['user'])
-            position_list[position_list.index(position)].AddToPosition(args['reducedPositionSize'])
+        try:
+            for position_extended in extend_positions:
+                args = position_extended['args']
+                position = UserPosition(args['idx'], args['user'])
+                if position not in position_list:
+                    position_list.append(position)
+                position_list[position_list.index(position)].AddToPosition(args['addedPositionSize'])
+     
+            for position_reduced in reduce_positions:
+                args = position_reduced['args']
+                position = UserPosition(args['idx'], args['user'])
+                position_list[position_list.index(position)].AddToPosition(args['reducedPositionSize'])
+
+        except ValueError:
+            ## Re initialize, fixes odd desync issues between node and events
+            extend_positions_init = extend_position_filter.get_all_entries()
+            reduce_positions_init = reduce_position_filter.get_all_entries()
+
+            position_list = []
+
+            # Initialize from past 'ExtendPosition' events
+            for position_extended in extend_positions_init:
+                args = position_extended['args']
+                position = UserPosition(args['idx'], args['user'])
+                if position not in position_list:
+                    position_list.append(position)
+                position_list[position_list.index(position)].AddToPosition(args['addedPositionSize'])
+
+            # Initialize from past 'ReducePosition' events
+            for position_reduced in reduce_positions_init:
+                args = position_reduced['args']
+                position = UserPosition(args['idx'], args['user'])
+                position_list[position_list.index(position)].AddToPosition(args['reducedPositionSize'])
+
+            # Get rid of closed positions (don't really have to do this, but stops position list from growing endlessly)
+            position_list = [position for position in position_list if position.position_size != 0]
+
 
         # Remove closed positions from position list
         position_list = [position for position in position_list if position.position_size != 0]
