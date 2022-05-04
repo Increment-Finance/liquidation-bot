@@ -18,9 +18,13 @@ load_dotenv('.env')
 rpc_url = os.getenv('RPC')
 web3 = Web3(Web3.WebsocketProvider(rpc_url, websocket_timeout=60))
 
+
+# Required to make compatible with Rinkeby testnet
 if web3.eth.chainId == 4:
     web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
+
+# Load in contracts we will interact with
 with open(f'./contract-details/{web3.eth.chainId}/ClearingHouse.json', 'r') as clearinghouse_json:
     clearinghouse = json.load(clearinghouse_json)
 clearinghouse_contract = web3.eth.contract(address=clearinghouse['address'], abi=clearinghouse['abi'])
@@ -39,7 +43,7 @@ transaction_dict = {
     'chainId': web3.eth.chainId,
     'nonce': web3.eth.get_transaction_count(account.address),
     'gas': 3*(10**6),
-    'maxFeePerGas': web3.toWei(250, 'gwei'),
+    'maxFeePerGas': web3.toWei(100, 'gwei'),
     'maxPriorityFeePerGas': web3.toWei(5, 'gwei')
 }
 
@@ -116,7 +120,7 @@ def main():
             if not clearinghouse_contract.functions.marginIsValid(position.idx, position.user, MIN_MARGIN).call():
                 print(f'Liquidating user {position.user} on idx {position.idx}.\n')
                 receipt = liquidate_position(idx=position.idx, address=position.user)
-                print(receipt)
+                print('Success\n' if receipt.status else 'Fail\n')
                 print('\n')
 
         # Ideally this sleep timer is replaced by a block header filter, assumes user has a websocket RPC available
