@@ -4,6 +4,7 @@ import time
 import datetime
 import os
 import getpass
+from dataclasses import dataclass
 
 from web3 import Web3, Account
 from web3.middleware import geth_poa_middleware
