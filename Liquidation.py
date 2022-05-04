@@ -1,4 +1,5 @@
 import json
+import requests
 import time
 import datetime
 import os
@@ -38,9 +39,42 @@ transaction_dict = {
     'chainId': web3.eth.chainId,
     'nonce': web3.eth.get_transaction_count(account.address),
     'gas': 3*(10**6),
-    'maxFeePerGas': 3000000000,
-    'maxPriorityFeePerGas': 2000000000
+    'maxFeePerGas': web3.toWei(250, 'gwei'),
+    'maxPriorityFeePerGas': web3.toWei(5, 'gwei')
 }
+
+def Initialize_User_Positions(idx):
+    graph_url = 'https://api.thegraph.com/subgraphs/name/increment-finance/increment-rinkeby'
+    positions_returned = 1000
+    query_num = 0
+    position_list = []
+
+    while positions_returned == 1000:
+        graph_query = ( '{\n'
+                            f'market(id: {idx}) {{\n'
+                                f'positions(first: 1000, skip: {query_num * 1000}) {{\n'
+                                    'user {\n'
+                                        'id\n'
+                                    '}\n'
+                                    'amount\n'
+                                '}\n'
+                            '}\n'
+                        '}')
+
+        request = requests.post(graph_url, json={'query': graph_query})
+        results = request.json()['data']['market']['positions']
+        positions_returned = len(results)
+        query_num += 1
+
+        for result_position in results:
+            position_size = int(result_position['amount'])
+            user_address = Web3.toChecksumAddress(result_position['user']['id'])
+
+            if position_size != 0:
+                position = UserPosition(idx=idx, user=user_address)
+                position_list.append(position)
+
+    return position_list
 
 
 # Submits extendPosition transaction
@@ -59,100 +93,35 @@ def liquidate_position(idx, address):
 
 
 def main():
-
     ## Initialization
     MIN_MARGIN = clearinghouse_contract.functions.MIN_MARGIN().call()
+    market_added_filter = clearinghouse_contract.events.MarketAdded.createFilter(fromBlock=0)
 
-    # Create event filters
-    extend_position_filter = clearinghouse_contract.events.ExtendPosition.createFilter(fromBlock=0)
-    reduce_position_filter = clearinghouse_contract.events.ReducePosition.createFilter(fromBlock=0)
-
-    extend_positions_init = extend_position_filter.get_all_entries()
-    reduce_positions_init = reduce_position_filter.get_all_entries()
-
+    heartbeat = 0
     position_list = []
 
-    # Initialize from past 'ExtendPosition' events
-    for position_extended in extend_positions_init:
-        args = position_extended['args']
-        position = UserPosition(args['idx'], args['user'])
-        if position not in position_list:
-            position_list.append(position)
-        position_list[position_list.index(position)].AddToPosition(args['addedPositionSize'])
-
-    # Initialize from past 'ReducePosition' events
-    for position_reduced in reduce_positions_init:
-        args = position_reduced['args']
-        position = UserPosition(args['idx'], args['user'])
-        position_list[position_list.index(position)].AddToPosition(args['reducedPositionSize'])
-
-    # Get rid of closed positions (don't really have to do this, but stops position list from growing endlessly)
-    position_list = [position for position in position_list if position.position_size != 0]
-
-    print(f'Initialized, currently tracking {len(position_list)} open position(s).\n')
 
     ## Main loop
     while True:
-
-        # Manage filters to track open positions
-        extend_positions = extend_position_filter.get_new_entries()
-        reduce_positions = reduce_position_filter.get_new_entries()
-
-        try:
-            for position_extended in extend_positions:
-                args = position_extended['args']
-                position = UserPosition(args['idx'], args['user'])
-                if position not in position_list:
-                    position_list.append(position)
-                position_list[position_list.index(position)].AddToPosition(args['addedPositionSize'])
-     
-            for position_reduced in reduce_positions:
-                args = position_reduced['args']
-                position = UserPosition(args['idx'], args['user'])
-                position_list[position_list.index(position)].AddToPosition(args['reducedPositionSize'])
-
-        except ValueError:
-            ## Re initialize, fixes odd desync issues between node and events
-            extend_positions_init = extend_position_filter.get_all_entries()
-            reduce_positions_init = reduce_position_filter.get_all_entries()
-
+        if heartbeat % 60 == 0:
+            num_perpetual_markets = len(market_added_filter.get_all_entries())
             position_list = []
-
-            # Initialize from past 'ExtendPosition' events
-            for position_extended in extend_positions_init:
-                args = position_extended['args']
-                position = UserPosition(args['idx'], args['user'])
-                if position not in position_list:
-                    position_list.append(position)
-                position_list[position_list.index(position)].AddToPosition(args['addedPositionSize'])
-
-            # Initialize from past 'ReducePosition' events
-            for position_reduced in reduce_positions_init:
-                args = position_reduced['args']
-                position = UserPosition(args['idx'], args['user'])
-                position_list[position_list.index(position)].AddToPosition(args['reducedPositionSize'])
-
-            # Get rid of closed positions (don't really have to do this, but stops position list from growing endlessly)
-            position_list = [position for position in position_list if position.position_size != 0]
-
-
-        # Remove closed positions from position list
-        position_list = [position for position in position_list if position.position_size != 0]
-        #print(f'Tracking {len(position_list)} open position(s).')
+            for idx in range(num_perpetual_markets):
+                position_list.extend(Initialize_User_Positions(idx))
+            print(f'Currently tracking {len(position_list)} open position(s).\n')
 
         # Check if any open positions can be liquidated
         for position in position_list:
-
             # TODO: Multicall should be used here to group all the marginIsValid() calls, will save seconds if lots of positions are open
             if not clearinghouse_contract.functions.marginIsValid(position.idx, position.user, MIN_MARGIN).call():
                 print(f'Liquidating user {position.user} on idx {position.idx}.\n')
-
                 receipt = liquidate_position(idx=position.idx, address=position.user)
                 print(receipt)
                 print('\n')
 
         # Ideally this sleep timer is replaced by a block header filter, assumes user has a websocket RPC available
         time.sleep(1)
+        heartbeat += 1
 
 
 if __name__ == '__main__':
