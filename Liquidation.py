@@ -9,10 +9,9 @@ from web3 import Web3, Account
 from web3.middleware import geth_poa_middleware
 from dotenv import load_dotenv, dotenv_values
 
-from UserPosition import UserPosition
-
 
 load_dotenv('.env')
+
 
 # This RPC should ideally be localhost
 rpc_url = os.getenv('RPC')
@@ -47,6 +46,13 @@ transaction_dict = {
     'maxPriorityFeePerGas': web3.toWei(5, 'gwei')
 }
 
+
+@dataclass
+class UserPosition:
+    idx: int
+    user: str
+
+
 def Initialize_User_Positions(idx):
     graph_url = 'https://api.thegraph.com/subgraphs/name/increment-finance/increment-rinkeby'
     positions_returned = 1000
@@ -54,6 +60,19 @@ def Initialize_User_Positions(idx):
     position_list = []
 
     while positions_returned == 1000:
+
+        ### Query used without formatting for python:
+        # {
+        #   market(id: x) {
+        #     positions(first: 1000, skip: y) {
+        #       user {
+        #         id
+        #       }
+        #       amount
+        #     }
+        #   }
+        # }
+
         graph_query = ( '{\n'
                             f'market(id: {idx}) {{\n'
                                 f'positions(first: 1000, skip: {query_num * 1000}) {{\n'
@@ -108,7 +127,12 @@ def main():
     ## Main loop
     while True:
         if heartbeat % 60 == 0:
-            num_perpetual_markets = len(market_added_filter.get_all_entries())
+            try:
+                num_perpetual_markets = len(market_added_filter.get_all_entries())
+            except ValueError:
+                market_added_filter = clearinghouse_contract.events.MarketAdded.createFilter(fromBlock=0)
+                num_perpetual_markets = len(market_added_filter.get_all_entries())
+
             position_list = []
             for idx in range(num_perpetual_markets):
                 position_list.extend(Initialize_User_Positions(idx))
@@ -118,10 +142,9 @@ def main():
         for position in position_list:
             # TODO: Multicall should be used here to group all the marginIsValid() calls, will save seconds if lots of positions are open
             if not clearinghouse_contract.functions.marginIsValid(position.idx, position.user, MIN_MARGIN).call():
-                print(f'Liquidating user {position.user} on idx {position.idx}.\n')
+                print(f'Liquidating user {position.user} on idx {position.idx}.')
                 receipt = liquidate_position(idx=position.idx, address=position.user)
                 print('Success\n' if receipt.status else 'Fail\n')
-                print('\n')
 
         # Ideally this sleep timer is replaced by a block header filter, assumes user has a websocket RPC available
         time.sleep(1)
