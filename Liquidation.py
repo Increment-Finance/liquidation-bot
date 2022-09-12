@@ -19,7 +19,7 @@ web3 = Web3(Web3.WebsocketProvider(rpc_url, websocket_timeout=60))
 
 password = os.getenv('PASSWORD')
 
-graph_url = 'https://api.thegraph.com/subgraphs/name/increment-finance/beta-v2-zksync'
+graph_url = 'https://api.thegraph.com/subgraphs/name/increment-finance/beta-v2-zksync-testnet'
 
 # Required to make compatible with Rinkeby testnet
 if web3.eth.chainId == 4:
