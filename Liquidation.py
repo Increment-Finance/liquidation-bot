@@ -250,7 +250,7 @@ def main():
                 print('Success\n' if receipt.status else 'Fail\n')
 
         # Ideally this sleep timer is replaced by a block header filter, assumes user has a websocket RPC available
-        time.sleep(1)
+        time.sleep(20)
         heartbeat += 1
 
 
