@@ -181,7 +181,10 @@ def Liquidate_Position(position):
     address = position.user
     is_trader = position.is_trader
 
-    proposed_amount = clearinghouse_viewer_contract.functions.getProposedAmount(idx, address, is_trader, int(1e18), 100).call()[0]
+    if is_trader:
+        proposed_amount = clearinghouse_viewer_contract.functions.getTraderProposedAmount(idx, address, int(1e18), 100, 0).call()
+    else:
+        proposed_amount = clearinghouse_viewer_contract.functions.getLpProposedAmount(idx, address, int(1e18), 100, [0,0]).call()
 
     unsigned_tx = clearinghouse_contract.functions.liquidate(idx, address, proposed_amount, is_trader).buildTransaction(transaction_dict)
                                  
