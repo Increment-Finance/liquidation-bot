@@ -178,7 +178,7 @@ def Initialize_User_Debt_Positions():
 # Submits transaction
 def Liquidate_Position(position):
     idx = position.idx
-    address = position.address
+    address = position.user
     is_trader = position.is_trader
 
     proposed_amount = clearinghouse_viewer_contract.functions.getProposedAmount(idx, address, is_trader, int(1e18), 100).call()[0]
