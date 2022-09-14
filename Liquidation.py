@@ -47,9 +47,8 @@ with open(f'./{os.getenv("KEYFILE")}') as keyfile:
 transaction_dict = {
     'chainId': web3.eth.chainId,
     'nonce': web3.eth.get_transaction_count(account.address),
-    'gas': 3*(10**6),
-    'maxFeePerGas': web3.toWei(100, 'gwei'),
-    'maxPriorityFeePerGas': web3.toWei(5, 'gwei')
+    'gasPrice': web3.toWei(0.1, 'gwei'),
+    'gas': 3*(10**6)
 }
 
 
