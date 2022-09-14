@@ -182,11 +182,11 @@ def Liquidate_Position(position):
 
     if is_trader:
         proposed_amount = clearinghouse_viewer_contract.functions.getTraderProposedAmount(idx, address, int(1e18), 100, 0).call()
+        unsigned_tx = clearinghouse_contract.functions.liquidateTrader(idx, address, proposed_amount, 0).buildTransaction(transaction_dict)
     else:
         proposed_amount = clearinghouse_viewer_contract.functions.getLpProposedAmount(idx, address, int(1e18), 100, [0,0]).call()
-
-    unsigned_tx = clearinghouse_contract.functions.liquidate(idx, address, proposed_amount, is_trader).buildTransaction(transaction_dict)
-                                 
+        unsigned_tx = clearinghouse_contract.functions.liquidateLp(idx, address, [0,0], proposed_amount, 0).buildTransaction(transaction_dict)
+                             
     signed_tx = web3.eth.account.sign_transaction(unsigned_tx, account.key)
     tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
     receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
