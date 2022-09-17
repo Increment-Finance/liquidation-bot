@@ -180,26 +180,38 @@ def Liquidate_Position(position):
     address = position.user
     is_trader = position.is_trader
 
-    if is_trader:
-        proposed_amount = clearinghouse_viewer_contract.functions.getTraderProposedAmount(idx, address, int(1e18), 100, 0).call()
-        unsigned_tx = clearinghouse_contract.functions.liquidateTrader(idx, address, proposed_amount, 0).buildTransaction(transaction_dict)
-    else:
-        proposed_amount = clearinghouse_viewer_contract.functions.getLpProposedAmount(idx, address, int(1e18), 100, [0,0]).call()
-        unsigned_tx = clearinghouse_contract.functions.liquidateLp(idx, address, [0,0], proposed_amount, 0).buildTransaction(transaction_dict)
-                             
-    signed_tx = web3.eth.account.sign_transaction(unsigned_tx, account.key)
-    tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-    receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+    proposed_amount = None
+    try:
+        if is_trader:
+            proposed_amount = clearinghouse_viewer_contract.functions.getTraderProposedAmount(idx, address, int(1e18), 100, 0).call()
+            print('Trader')
+            #unsigned_tx = clearinghouse_contract.functions.liquidateTrader(idx, address, proposed_amount, 0).buildTransaction(transaction_dict)
+        else:
+            proposed_amount = clearinghouse_viewer_contract.functions.getLpProposedAmount(idx, address, int(1e18), 100, [0,0]).call()
+            print('LP')
+            #unsigned_tx = clearinghouse_contract.functions.liquidateLp(idx, address, [0,0], proposed_amount, 0).buildTransaction(transaction_dict)
+    except Exception as e:
+        print(f'Fail: Position: {clearinghouse_viewer_contract.functions.getTraderPosition(idx, address).call()}')
 
-    transaction_dict['nonce'] += 1
+    print()
+    if proposed_amount is not None:
 
-    return receipt
+        unsigned_tx = clearinghouse_contract.functions.liquidate(idx, address, proposed_amount, is_trader).buildTransaction(transaction_dict)                      
+        signed_tx = web3.eth.account.sign_transaction(unsigned_tx, account.key)
+        tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+
+        transaction_dict['nonce'] += 1
+
+        return receipt
+
+    return None
 
 
 def Seize_Collateral(debt_position):
     address = debt_position.user
 
-    unsigned_tx = clearinghouse_contract.functions.seizeCollateral(address)
+    unsigned_tx = clearinghouse_contract.functions.seizeCollateral(address).buildTransaction(transaction_dict)
 
     signed_tx = web3.eth.account.sign_transaction(unsigned_tx, account.key)
     tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
@@ -235,12 +247,19 @@ def main():
 
         # Check if any open positions can be liquidated
         for position in position_list:
+            free_collateral = None
+            while free_collateral is None:
+                try:
+                    free_collateral = clearinghouse_contract.functions.getFreeCollateralByRatio(position.user, min_margin).call()
+                except:
+                    web3 = Web3(Web3.WebsocketProvider(rpc_url, websocket_timeout=60))
+                    time.sleep(10)
             # TODO: Multicall should be used here to group all the marginIsValid() calls, will save seconds if lots of positions are open
-            if not clearinghouse_contract.functions.getFreeCollateralByRatio(position.user, min_margin).call() >= 0:
+            if not free_collateral >= 0:
                 print(f'Liquidating user {position.user} on idx {position.idx}.')
                 receipt = Liquidate_Position(position)
-                print('Success\n' if receipt.status else 'Fail\n')
-
+                #print('Success\n' if receipt.status else 'Fail\n')
+        print('Lap')
         for debt_position in debt_position_list:
             debt = -debt_position.ua_balance
             discounted_collaterals_balance = vault_contract.functions.getReserveValue(debt_position.user, True).call()
@@ -249,7 +268,7 @@ def main():
             if debt > ua_debt_threshold or debt > (discounted_collaterals_balance_ex_UA * non_UA_coll_seizure_discount) // 10**18:
                 print(f'Seizing collateral of user {debt_position.user}.')
                 receipt = Seize_Collateral(debt_position)
-                print('Success\n' if receipt.status else 'Fail\n')
+                #print('Success\n' if receipt.status else 'Fail\n')
 
         # Ideally this sleep timer is replaced by a block header filter, assumes user has a websocket RPC available
         time.sleep(20)
