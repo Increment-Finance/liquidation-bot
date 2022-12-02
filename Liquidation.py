@@ -19,7 +19,7 @@ web3 = Web3(Web3.WebsocketProvider(rpc_url, websocket_timeout=60))
 
 password = os.getenv('PASSWORD')
 
-graph_url = 'https://api.thegraph.com/subgraphs/name/increment-finance/beta-v2-zksync-testnet'
+graph_url = 'https://api.thegraph.com/subgraphs/name/increment-finance/goerli-trading-comp'
 
 # Required to make compatible with Rinkeby testnet
 if web3.eth.chainId == 4:
@@ -196,7 +196,11 @@ def Liquidate_Position(position):
     print()
     if proposed_amount is not None:
 
-        unsigned_tx = clearinghouse_contract.functions.liquidate(idx, address, proposed_amount, is_trader).buildTransaction(transaction_dict)                      
+        if is_trader:
+            unsigned_tx = clearinghouse_contract.functions.liquidateTrader(idx, address, proposed_amount, 0).buildTransaction(transaction_dict)
+        else:
+            unsigned_tx = clearinghouse_contract.functions.liquidateLp(idx, address, [0,0], proposed_amount, 0).buildTransaction(transaction_dict)
+
         signed_tx = web3.eth.account.sign_transaction(unsigned_tx, account.key)
         tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
         receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
@@ -234,7 +238,7 @@ def main():
 
     ## Main loop
     while True:
-        if heartbeat % 60 == 0:
+        if heartbeat % 3 == 0:
             num_perpetual_markets = clearinghouse_contract.functions.getNumMarkets().call()
 
             position_list = []
@@ -243,7 +247,7 @@ def main():
 
             debt_position_list = Initialize_User_Debt_Positions()
 
-            print(f'Currently tracking {len(position_list)} open position(s) and {len(debt_position_list)} UA debt position(s).\n')
+            print(f'{datetime.datetime.now().strftime("%H:%M:%S")} Currently tracking {len(position_list)} open position(s) and {len(debt_position_list)} UA debt position(s).\n')
 
         # Check if any open positions can be liquidated
         for position in position_list:
@@ -259,7 +263,7 @@ def main():
                 print(f'Liquidating user {position.user} on idx {position.idx}.')
                 receipt = Liquidate_Position(position)
                 #print('Success\n' if receipt.status else 'Fail\n')
-        print('Lap')
+
         for debt_position in debt_position_list:
             debt = -debt_position.ua_balance
             discounted_collaterals_balance = vault_contract.functions.getReserveValue(debt_position.user, True).call()
