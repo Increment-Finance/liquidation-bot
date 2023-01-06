@@ -19,19 +19,20 @@ web3 = Web3(Web3.WebsocketProvider(rpc_url, websocket_timeout=60))
 
 password = os.getenv('PASSWORD')
 
-graph_url = 'https://api.thegraph.com/subgraphs/name/increment-finance/goerli-trading-comp'
+graph_url = os.getenv('SUBGRAPH_URL')
 
 # Required to make compatible with Rinkeby testnet
 if web3.eth.chainId == 4:
     web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
+contract_details_folder = f'''protocol-deployments/deployments/{os.getenv('NETWORK')}'''
 
 # Load in contracts we will interact with
-with open(f'./contract-details/{web3.eth.chainId}/ClearingHouse.json', 'r') as clearinghouse_json:
+with open(f'{contract_details_folder}/ClearingHouse.json', 'r') as clearinghouse_json:
     clearinghouse = json.load(clearinghouse_json)
 clearinghouse_contract = web3.eth.contract(address=clearinghouse['address'], abi=clearinghouse['abi'])
 
-with open(f'./contract-details/{web3.eth.chainId}/ClearingHouseViewer.json', 'r') as clearinghouse_viewer_json:
+with open(f'{contract_details_folder}/ClearingHouseViewer.json', 'r') as clearinghouse_viewer_json:
     clearinghouse_viewer = json.load(clearinghouse_viewer_json)
 clearinghouse_viewer_contract = web3.eth.contract(address=clearinghouse_viewer['address'], abi=clearinghouse_viewer['abi'])
 
