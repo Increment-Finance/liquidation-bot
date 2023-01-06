@@ -13,8 +13,7 @@ git submodule update --init
 Install required Python packages by running:
 
 ```
-pip install python-dotenv
-pip install web3
+pip install -r requirements.txt
 ```
 
 Prepare a .env file with the following variables:
