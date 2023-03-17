@@ -16,6 +16,11 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+          token: ${{ secrets.ACCESS_TOKEN }}
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
 
@@ -32,12 +37,20 @@ jobs:
       - name: Set Short SHA
         uses: benjlevesque/short-sha@v2.1
         id: short-sha
-          
+
+      - name: Set Repository Name to Lowercase
+        uses: ASzc/change-string-case-action@v5
+        id: repo-tolower
+        with:
+          string: ${{ github.repository }}
+
       - name: Build and push
         uses: docker/build-push-action@v4
         with:
+          context: .
+          file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:${{ steps.short-sha.outputs.sha }}
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ steps.repo-tolower.outputs.lowercase }}:${{ steps.short-sha.outputs.sha }}
+            ghcr.io/${{ steps.repo-tolower.outputs.lowercase }}:latest
