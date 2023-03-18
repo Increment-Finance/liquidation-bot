@@ -36,7 +36,7 @@ with open(f'{contract_details_folder}/ClearingHouseViewer.json', 'r') as clearin
     clearinghouse_viewer = json.load(clearinghouse_viewer_json)
 clearinghouse_viewer_contract = web3.eth.contract(address=clearinghouse_viewer['address'], abi=clearinghouse_viewer['abi'])
 
-with open(f'./contract-details/{web3.eth.chainId}/Vault.json', 'r') as vault_json:
+with open(f'{contract_details_folder}/Vault.json', 'r') as vault_json:
     vault = json.load(vault_json)
 vault_contract = web3.eth.contract(address=vault['address'], abi=vault['abi'])
 
