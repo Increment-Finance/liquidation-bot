@@ -3,19 +3,19 @@ import requests
 import time
 import datetime
 import os
-import getpass
 from dataclasses import dataclass
 
 from web3 import Web3, Account
 from web3.middleware import geth_poa_middleware
-from dotenv import load_dotenv, dotenv_values
+from dotenv import load_dotenv
+from zksync2.module.module_builder import ZkSyncBuilder
 
 
 load_dotenv('.env')
 
 # This RPC should ideally be localhost
 rpc_url = os.getenv('RPC')
-web3 = Web3(Web3.WebsocketProvider(rpc_url, websocket_timeout=60))
+web3 = ZkSyncBuilder.build(rpc_url)
 
 password = os.getenv('PASSWORD')
 
@@ -46,9 +46,9 @@ with open(f'./{os.getenv("KEYFILE")}') as keyfile:
     print(f'Password accepted, using account {account.address}')
 
 transaction_dict = {
-    'chainId': web3.eth.chainId,
+    'chainId': web3.eth.chain_id,
     'nonce': web3.eth.get_transaction_count(account.address),
-    'gasPrice': web3.toWei(0.1, 'gwei'),
+    'gasPrice': 2*web3.eth.gas_price,
     'gas': 3*(10**6)
 }
 
@@ -111,14 +111,14 @@ def Initialize_User_Positions(idx):
 
         for trader_position in trader_results:
             position_size = int(trader_position['positionSize'])
-            user_address = Web3.toChecksumAddress(trader_position['user']['id'])
+            user_address = Web3.to_checksum_address(trader_position['user']['id'])
             if position_size != 0:
                 position = UserPosition(idx=idx, user=user_address, is_trader=True)
                 position_list.append(position)
 
         for lp_position in lp_results:
             position_size = int(lp_position['positionSize'])
-            user_address = Web3.toChecksumAddress(lp_position['user']['id'])
+            user_address = Web3.to_checksum_address(lp_position['user']['id'])
             if position_size != 0:
                 position = UserPosition(idx=idx, user=user_address, is_trader=False)
                 position_list.append(position)
@@ -167,7 +167,7 @@ def Initialize_User_Debt_Positions():
 
         for token_balance in token_balances:
             if int(token_balance['token']['id']) == 0:# and int(token_balance['amount']) < 0:
-                user_address = Web3.toChecksumAddress(token_balance['user']['id'])
+                user_address = Web3.to_checksum_address(token_balance['user']['id'])
                 ua_balance = int(token_balance['amount'])
                 debt_position = UserDebtPosition(user=user_address, ua_balance=ua_balance)
                 position_list.append(debt_position)
@@ -281,4 +281,4 @@ def main():
 
 
 if __name__ == '__main__':
-   main()
+    main()
