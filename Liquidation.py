@@ -22,7 +22,7 @@ password = os.getenv('PASSWORD')
 graph_url = os.getenv('SUBGRAPH_URL')
 
 # Required to make compatible with Rinkeby testnet
-if web3.eth.chainId == 4:
+if web3.eth.chain_id == 4:
     web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
 contract_details_folder = f'''protocol-deployments/deployments/{os.getenv('NETWORK')}'''
