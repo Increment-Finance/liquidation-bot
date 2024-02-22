@@ -8,14 +8,13 @@ from dataclasses import dataclass
 from web3 import Web3, Account
 from web3.middleware import geth_poa_middleware
 from dotenv import load_dotenv
-from zksync2.module.module_builder import ZkSyncBuilder
 
 
 load_dotenv('.env')
 
 # This RPC should ideally be localhost
 rpc_url = os.getenv('RPC')
-web3 = ZkSyncBuilder.build(rpc_url)
+web3 = Web3(Web3.WebsocketProvider(rpc_url))
 
 password = os.getenv('PASSWORD')
 
@@ -25,18 +24,18 @@ graph_url = os.getenv('SUBGRAPH_URL')
 if web3.eth.chain_id == 4:
     web3.middleware_onion.inject(geth_poa_middleware, layer=0)
 
-contract_details_folder = f'''protocol-deployments/deployments/{os.getenv('NETWORK')}'''
+contract_details_folder = f'''deployments/{os.getenv('NETWORK')}'''
 
 # Load in contracts we will interact with
-with open(f'{contract_details_folder}/ClearingHouse.json', 'r') as clearinghouse_json:
+with open(f'{contract_details_folder}/clearinghouse.json', 'r') as clearinghouse_json:
     clearinghouse = json.load(clearinghouse_json)
 clearinghouse_contract = web3.eth.contract(address=clearinghouse['address'], abi=clearinghouse['abi'])
 
-with open(f'{contract_details_folder}/ClearingHouseViewer.json', 'r') as clearinghouse_viewer_json:
+with open(f'{contract_details_folder}/clearingHouseViewer.json', 'r') as clearinghouse_viewer_json:
     clearinghouse_viewer = json.load(clearinghouse_viewer_json)
 clearinghouse_viewer_contract = web3.eth.contract(address=clearinghouse_viewer['address'], abi=clearinghouse_viewer['abi'])
 
-with open(f'{contract_details_folder}/Vault.json', 'r') as vault_json:
+with open(f'{contract_details_folder}/vault.json', 'r') as vault_json:
     vault = json.load(vault_json)
 vault_contract = web3.eth.contract(address=vault['address'], abi=vault['abi'])
 
