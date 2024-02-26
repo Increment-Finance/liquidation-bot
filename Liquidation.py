@@ -12,11 +12,14 @@ from dotenv import load_dotenv
 
 load_dotenv('.env')
 
+CURVE_TRADING_FEE_DECIMALS = 10
+
 # This RPC should ideally be localhost
 rpc_url = os.getenv('RPC')
 web3 = Web3(Web3.WebsocketProvider(rpc_url))
 
 password = os.getenv('PASSWORD')
+deployment_block = int(os.getenv('DEPLOYMENT_BLOCK'))
 
 graph_url = os.getenv('SUBGRAPH_URL')
 
@@ -41,8 +44,30 @@ vault_contract = web3.eth.contract(address=vault['address'], abi=vault['abi'])
 
 # Setup wallet from keyfile
 with open(f'./{os.getenv("KEYFILE")}') as keyfile:
-    account = Account.from_key(web3.eth.account.decrypt(keyfile.read(), password))#getpass.getpass()))
+    account = Account.from_key(web3.eth.account.decrypt(keyfile.read(), password))
     print(f'Password accepted, using account {account.address}')
+
+with open(f'{contract_details_folder}/perp.json', 'r') as perp_json:
+    perp_abi = json.load(perp_json)['abi']
+
+with open(f'{contract_details_folder}/market.json', 'r') as market_json:
+    market_abi = json.load(market_json)['abi']
+
+if not os.path.isfile('state.json'):
+    with open('state.json', 'x') as f:
+        start_state = {
+            'synced_block': deployment_block,
+            'perps': {},
+            'trader_positions': {},
+            'reserves': {},
+            'reserve_weights': {},
+            'ua_address': vault_contract.functions.UA().call()
+        }
+        f.write(json.dumps(start_state))
+
+with open('state.json', 'r') as f:
+    state = json.loads(f.read())
+
 
 transaction_dict = {
     'chainId': web3.eth.chain_id,
@@ -53,10 +78,12 @@ transaction_dict = {
 
 
 @dataclass
-class UserPosition:
+class TraderPosition:
     idx: int
     user: str
-    is_trader: bool
+    open_notional: int
+    position_size: int
+
 
 @dataclass
 class UserDebtPosition:
@@ -64,114 +91,209 @@ class UserDebtPosition:
     ua_balance: int
 
 
-def Initialize_User_Positions(idx):
-    positions_returned = 1000
-    query_iter = 0
-    position_list = []
+### SYNC FUNCTIONS ###
 
-    while positions_returned == 1000:
+def sync_clearinghouse_parameters(to_block):
+    logs = clearinghouse_contract.events.ClearingHouseParametersChanged.get_logs(fromBlock=state['synced_block']+1, toBlock=to_block)
+    for event_log in logs:
+        args = event_log['args']
+        state['min_margin'] = args['newMinMargin']
+        state['ua_debt_seizure_threshold'] = args['uaDebtSeizureThreshold']
+        state['non_ua_coll_seizure_discount'] = args['nonUACollSeizureDiscount']
 
-        ### Query used without formatting for python:
-        # {
-        #   market(id: x) {
-        #     positions(first: 1000, skip: y) {
-        #       user {
-        #         id
-        #       }
-        #       amount
-        #     }
-        #   }
-        # }
+def sync_collateral_weights(to_block):
+    logs = vault_contract.events.CollateralAdded.get_logs(fromBlock=state['synced_block']+1, toBlock=to_block)
+    for event_log in logs:
+        args = event_log['args']
+        asset = args['asset']
+        weight = args['weight']
+        state['reserve_weights'][asset] = weight
 
-        graph_query = ( '{\n'
-                            f'market(id: {idx}) {{\n'
-                                f'positions(first: 1000, skip: {query_iter * 1000}) {{\n'
-                                    'user {\n'
-                                        'id\n'
-                                    '}\n'
-                                    'positionSize\n'
-                                '}\n'
-                                f'liquidityPositions(first: 1000, skip: {query_iter * 1000}) {{\n'
-                                    'user {\n'
-                                        'id\n'
-                                    '}\n'
-                                    'positionSize\n'
-                                '}\n'
-                            '}\n'
-                        '}')
-
-        request = requests.post(graph_url, json={'query': graph_query})
-
-        trader_results = request.json()['data']['market']['positions']
-        lp_results = request.json()['data']['market']['liquidityPositions']
-        positions_returned = max(len(trader_results), len(lp_results))
-
-        query_iter += 1
-
-        for trader_position in trader_results:
-            position_size = int(trader_position['positionSize'])
-            user_address = Web3.to_checksum_address(trader_position['user']['id'])
-            if position_size != 0:
-                position = UserPosition(idx=idx, user=user_address, is_trader=True)
-                position_list.append(position)
-
-        for lp_position in lp_results:
-            position_size = int(lp_position['positionSize'])
-            user_address = Web3.to_checksum_address(lp_position['user']['id'])
-            if position_size != 0:
-                position = UserPosition(idx=idx, user=user_address, is_trader=False)
-                position_list.append(position)
-
-    return position_list
+    logs = vault_contract.events.CollateralWeightChanged.get_logs(fromBlock=state['synced_block']+1, toBlock=to_block)
+    for event_log in logs:
+        args = event_log['args']
+        asset = args['asset']
+        weight = args['newWeight']
+        state['reserve_weights'][asset] = weight
 
 
-def Initialize_User_Debt_Positions():
-    positions_returned = 1000
-    query_iter = 0
-    position_list = []
+def sync_markets_added(to_block):
+    logs = clearinghouse_contract.events.MarketAdded.get_logs(fromBlock=state['synced_block']+1, toBlock=to_block)
+    for event_log in logs:
+        args = event_log['args']
+        idx = str(args['listedIdx'])
+        perp_address = clearinghouse_contract.functions.perpetuals(int(idx)).call()
+        market_address = web3.eth.contract(address=perp_address, abi=perp_abi).functions.market().call()
+        market_out_fee = web3.eth.contract(address=market_address, abi=market_abi).functions.out_fee().call()
+        # INDEX PRICE SHOULD NOT BE HERE
+        index_price = web3.eth.contract(address=perp_address, abi=perp_abi).functions.indexPrice().call()
+        risk_weight = web3.eth.contract(address=perp_address, abi=perp_abi).functions.riskWeight().call()
 
-    while positions_returned == 1000:
+        state['trader_positions'][idx] = {}
+        state['perps'][idx] = {
+            'address': perp_address,
+            'market_out_fee': market_out_fee,
+            'index_price': index_price,
+            'risk_weight': risk_weight
+        }
 
-        ### Query used without formatting for python:
-        # {
-        #   currentTokenBalances(first: 1000, skip: 0) {
-        #     user {
-        #       id
-        #     }
-        #     amount
-        #     token {
-        #       id
-        #     }
-        #   }
-        # }
+def sync_markets_removed(to_block):
+    logs = clearinghouse_contract.events.MarketRemoved.get_logs(fromBlock=state['synced_block']+1, toBlock=to_block)
+    for event_log in logs:
+        args = event_log['args']
+        idx = str(args['delistedIdx'])
+        del state['trader_positions'][idx]
+        del state['perps'][idx]
 
-        graph_query = ( '{\n'
-                            f'currentTokenBalances(first: 1000, skip: {query_iter * 1000}) {{\n'
-                                'user {\n'
-                                    'id\n'
-                                '}\n'
-                                'amount\n'
-                                'token {\n'
-                                    'id\n'
-                                '}\n'
-                            '}\n'
-                        '}\n')
+def sync_deposits(to_block):
+    logs = vault_contract.events.Deposit.get_logs(fromBlock=state['synced_block']+1, toBlock=to_block)
+    for event_log in logs:
+        args = event_log['args']
+        user = args['user']
+        asset = args['asset']
+        amount = args['amount']
+
+        if user not in state['reserves']:
+            state['reserves'][user] = {}
+
+        if asset not in state['reserves'][user]:
+            state['reserves'][user][asset] = 0
+
+        state['reserves'][user][asset] += amount
+
+def sync_withdrawals(to_block):
+    logs = vault_contract.events.Withdraw.get_logs(fromBlock=state['synced_block']+1, toBlock=to_block)
+    for event_log in logs:
+        args = event_log['args']
+        user = args['user']
+        asset = args['asset']
+        amount = args['amount']
+
+        state['reserves'][user][asset] -= amount
+
+def sync_funding(to_block):
+    for idx in state['perps']:
+        perp_address = state['perps'][idx]['address']
+        perp_contract = web3.eth.contract(address=perp_address, abi=perp_abi)
+        logs = perp_contract.events.FundingPaid.get_logs(fromBlock=state['synced_block']+1, toBlock=to_block)
+        for event_log in logs:
+            args = event_log['args']
+            account = args['account']
+            amount = args['amount']
+
+            if account not in state['reserves']:
+                state['reserves'][account] = {}
+
+            if state['ua_address'] not in state['reserves'][account]:
+                state['reserves'][account][state['ua_address']] = 0
+
+            state['reserves'][account][state['ua_address']] += amount
 
 
-        request = requests.post(graph_url, json={'query': graph_query})
+# Updates the state trader positions from the state synced_block to to_block
+def sync_trader_positions(to_block):
+    logs = clearinghouse_contract.events.ChangePosition.get_logs(fromBlock=state['synced_block']+1, toBlock=to_block)
+    for event_log in logs:
+        args = event_log['args']
+        idx = str(args['idx'])
+        user = args['user']
+        added_open_notional = args['addedOpenNotional']
+        added_position_size = args['addedPositionSize']
+        is_position_closed = args['isPositionClosed']
+        is_position_increased = args['isPositionIncreased']
+        profit = args['profit']
+        trading_fees_payed = args['tradingFeesPayed']
 
-        token_balances = request.json()['data']['currentTokenBalances']
-        positions_returned = len(token_balances)
-        query_iter += 1
+        state['reserves'][user][state['ua_address']] += profit
 
-        for token_balance in token_balances:
-            if int(token_balance['token']['id']) == 0:# and int(token_balance['amount']) < 0:
-                user_address = Web3.to_checksum_address(token_balance['user']['id'])
-                ua_balance = int(token_balance['amount'])
-                debt_position = UserDebtPosition(user=user_address, ua_balance=ua_balance)
-                position_list.append(debt_position)
+        if not is_position_increased:
+            added_open_notional -= profit + trading_fees_payed
 
-    return position_list
+        if user not in state['trader_positions'][idx]:
+            state['trader_positions'][idx][user] = {
+                'open_notional': 0,
+                'position_size': 0
+            }
+
+        state['trader_positions'][idx][user]['open_notional'] += added_open_notional
+        state['trader_positions'][idx][user]['position_size'] += added_position_size
+
+        if is_position_closed:
+            del state['trader_positions'][idx][user]
+
+
+
+### HELPER FUNCTIONS ###
+
+# STILL NEEDS LP PNL DONE
+def get_pnl_across_markets(trader):
+    trader_pnl = 0
+    lp_pnl = 0
+    for idx in state['perps']:
+        oracle_price = state['perps'][idx]['index_price']
+        position_size = state['trader_positions'][idx][trader]['position_size']
+        open_notional = state['trader_positions'][idx][trader]['open_notional']
+
+        v_quote_virtual_proceeds = int(oracle_price / (10**18) * position_size)
+        fees_in_wad = state['perps'][idx]['market_out_fee'] * 10**(18 - CURVE_TRADING_FEE_DECIMALS)
+        trading_fees = int(abs(v_quote_virtual_proceeds) / (10**18) * fees_in_wad)
+
+        trader_pnl += open_notional + v_quote_virtual_proceeds - trading_fees
+        
+    return trader_pnl + lp_pnl
+
+# STILL NEEDS LP DEBT DONE
+def get_debt_across_markets(trader):
+    trader_debt = 0
+    lp_debt = 0
+    for idx in state['perps']:
+        oracle_price = state['perps'][idx]['index_price']
+        risk_weight = state['perps'][idx]['risk_weight']
+        position_size = state['trader_positions'][idx][trader]['position_size']
+        open_notional = state['trader_positions'][idx][trader]['open_notional']
+
+        quote_debt = min(open_notional, 0)
+        base_debt = min(int(position_size / (10**10) * oracle_price), 0)
+
+        market_trader_debt = abs(quote_debt + base_debt)
+        trader_debt += int(market_trader_debt / (10**18) * risk_weight)
+
+    return trader_debt + lp_debt
+
+# THIS NEEDS TO BE IMPLEMENTED BETTER FOR MULTI COLLATERAL. SHOULD BE oracle.getPrice() FUNCTION. WILL ONLY WORK FOR UA
+def get_oracle_price(token_address, token_balance):
+    if token_address == state['ua_address']:
+        return 1 * (10**18)
+    else:
+        return None
+
+def get_reserve_value(trader):
+    reserve_value = 0
+
+    for reserve_token in state['reserves'][trader]:
+        balance = state['reserves'][trader][reserve_token]
+        if balance != 0:
+            weighted_balance = int(balance / (10**18) * state['reserve_weights'][reserve_token])
+            usd_per_unit = get_oracle_price(reserve_token, balance)
+            reserve_value += int(weighted_balance / (10**18) * usd_per_unit)
+
+    return reserve_value
+
+def get_total_margin_requirement(trader, ratio):
+    user_debt = get_debt_across_markets(trader)
+    return int(user_debt / (10**18) * ratio)
+
+# SHOULD STILL FACTOR IN PENDING FUNDING PAYMENT
+def is_trader_position_valid(trader):
+    min_margin = state['min_margin']
+
+    pnl = get_pnl_across_markets(trader)
+    total_collateral_value = get_reserve_value(trader)
+    margin_required = get_total_margin_requirement(trader, min_margin)
+
+    free_collateral = min(total_collateral_value, total_collateral_value + pnl) - margin_required
+    print(free_collateral)
+    return free_collateral >= 0
 
 
 # Submits transaction
@@ -228,26 +350,70 @@ def Seize_Collateral(debt_position):
 
 def main():
     ## Initialization
-    min_margin = clearinghouse_contract.functions.minMargin().call()
-    ua_debt_threshold = clearinghouse_contract.functions.uaDebtSeizureThreshold().call()
-    non_UA_coll_seizure_discount = clearinghouse_contract.functions.nonUACollSeizureDiscount().call()
-
     heartbeat = 0
-    position_list = []
+    current_block = web3.eth.block_number
 
+    sync_clearinghouse_parameters(current_block)
+    sync_collateral_weights(current_block)
+    sync_markets_added(current_block)
+    sync_deposits(current_block)
+    sync_withdrawals(current_block)
+    sync_funding(current_block)
+    sync_trader_positions(current_block)
+    sync_markets_removed(current_block)
+    
+    state['synced_block'] = current_block
+    with open('state.json', 'w') as f:
+        f.write(json.dumps(state))
+
+    # print(get_pnl_across_markets('0x710Af02EEE203a4d6cFa2Cb8cc52A2DA0C0fE809'))
+    # print(clearinghouse_contract.functions.getPnLAcrossMarkets('0x710Af02EEE203a4d6cFa2Cb8cc52A2DA0C0fE809').call())
+
+    # real = vault_contract.functions.getReserveValue('0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c', True).call()
+    # simmed = state['reserves']['0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c'][state['ua_address']]
+    # print(real)
+    # print(simmed)
+    # print(real-simmed)
+    #get_reserve_value('0x710Af02EEE203a4d6cFa2Cb8cc52A2DA0C0fE809')
+    #2,083.27
+    state['perps']['0']['index_price'] = 2500_000000000000000000
+    is_trader_position_valid('0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c')
+    print(clearinghouse_contract.functions.getFreeCollateralByRatio('0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c', state['min_margin']).call())
+
+    # print()
+    # print('pnl')
+    # print(get_pnl_across_markets('0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c'))
+    # print(clearinghouse_contract.functions.getPnLAcrossMarkets('0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c').call())
+    # print()
+
+    # print('reserves')
+    # print(get_reserve_value('0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c'))
+    # print(state['reserves']['0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c'][state['ua_address']])
+    # print(vault_contract.functions.getReserveValue('0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c', True).call())
+    # print()
+    #print('debt')
+    #print(get_debt_across_markets('0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c'))
+    #orint(clearinghouse_contract.functions.getDebtAcrossMarkets('0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c').call())
+    # print()
+    #print('required margin')
+    #print(get_total_margin_requirement('0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c', state['min_margin']))
+    #print(clearinghouse_contract.functions.getTotalMarginRequirement('0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c', state['min_margin']).call())
+    # perp_address = clearinghouse_contract.functions.perpetuals(int(0)).call()
+    # print(web3.eth.contract(address=perp_address, abi=perp_abi).functions.getUserDebt('0x7342556EF654B12C438a7EBe0a8714fCD139Bc1c').call())
+
+    exit()
 
     ## Main loop
     while True:
         if heartbeat % 3 == 0:
-            num_perpetual_markets = clearinghouse_contract.functions.getNumMarkets().call()
-
-            position_list = []
-            for idx in range(num_perpetual_markets):
-                position_list.extend(Initialize_User_Positions(idx))
 
             debt_position_list = Initialize_User_Debt_Positions()
 
             print(f'{datetime.datetime.now().strftime("%H:%M:%S")} Currently tracking {len(position_list)} open position(s) and {len(debt_position_list)} UA debt position(s).\n')
+
+        # update index prices
+        for perp in state['perps']:
+            pass
 
         # Check if any open positions can be liquidated
         for position in position_list:
@@ -256,7 +422,7 @@ def main():
                 try:
                     free_collateral = clearinghouse_contract.functions.getFreeCollateralByRatio(position.user, min_margin).call()
                 except:
-                    web3 = Web3(Web3.WebsocketProvider(rpc_url, websocket_timeout=60))
+                    #web3 = Web3(Web3.WebsocketProvider(rpc_url, websocket_timeout=60))
                     time.sleep(10)
             # TODO: Multicall should be used here to group all the marginIsValid() calls, will save seconds if lots of positions are open
             if not free_collateral >= 0:
