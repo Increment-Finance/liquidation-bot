@@ -22,7 +22,6 @@ VBASE_INDEX = 1
 rpc_url = os.getenv('RPC')
 web3 = Web3(Web3.WebsocketProvider(rpc_url))
 
-password = os.getenv('PASSWORD')
 deployment_block = int(os.getenv('DEPLOYMENT_BLOCK'))
 
 contract_details_folder = f'''deployments/{os.getenv('NETWORK')}'''
@@ -41,9 +40,9 @@ with open(f'{contract_details_folder}/vault.json', 'r') as vault_json:
 vault_contract = web3.eth.contract(address=vault['address'], abi=vault['abi'])
 
 # Setup wallet from keyfile
-with open(f'./{os.getenv("KEYFILE")}') as keyfile:
-    account = Account.from_key(web3.eth.account.decrypt(keyfile.read(), password))
-    print(f'Password accepted, using account {account.address}')
+with open(f'./{os.getenv("PRIVATE_KEY")}') as private_key:
+    account = Account.from_key(private_key)
+    print(f'Using account {account.address}')
 
 with open(f'{contract_details_folder}/perp.json', 'r') as perp_json:
     perp_abi = json.load(perp_json)['abi']
