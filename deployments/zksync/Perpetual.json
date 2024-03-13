@@ -1,5 +1,4 @@
 {
-  "address": "0x2ECBAb2e241e9b54060fd20a1CF067D661FB99B3",
   "abi": [
     {
       "inputs": [
@@ -617,13 +616,58 @@
     {
       "inputs": [
         {
-          "internalType": "int256",
-          "name": "value",
-          "type": "int256"
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "minAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "enum LibPerpetual.Side",
+          "name": "direction",
+          "type": "uint8"
+        },
+        {
+          "internalType": "bool",
+          "name": "isLiquidation",
+          "type": "bool"
         }
       ],
-      "name": "updateAnswer",
+      "name": "changePosition",
       "outputs": [
+        {
+          "internalType": "int256",
+          "name": "quoteProceeds",
+          "type": "int256"
+        },
+        {
+          "internalType": "int256",
+          "name": "baseProceeds",
+          "type": "int256"
+        },
+        {
+          "internalType": "int256",
+          "name": "profit",
+          "type": "int256"
+        },
+        {
+          "internalType": "int256",
+          "name": "tradingFeesPayed",
+          "type": "int256"
+        },
+        {
+          "internalType": "bool",
+          "name": "isPositionIncreased",
+          "type": "bool"
+        },
         {
           "internalType": "bool",
           "name": "isPositionClosed",
@@ -1114,12 +1158,12 @@
     },
     {
       "inputs": [],
-      "name": "aggregator",
+      "name": "indexPrice",
       "outputs": [
         {
-          "internalType": "address",
+          "internalType": "int256",
           "name": "",
-          "type": "address"
+          "type": "int256"
         }
       ],
       "stateMutability": "view",

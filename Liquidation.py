@@ -27,15 +27,15 @@ deployment_block = int(os.getenv('DEPLOYMENT_BLOCK'))
 contract_details_folder = f'''deployments/{os.getenv('NETWORK')}'''
 
 # Load in contracts we will interact with
-with open(f'{contract_details_folder}/clearinghouse.json', 'r') as clearinghouse_json:
+with open(f'{contract_details_folder}/ClearingHouse.json', 'r') as clearinghouse_json:
     clearinghouse = json.load(clearinghouse_json)
 clearinghouse_contract = web3.eth.contract(address=clearinghouse['address'], abi=clearinghouse['abi'])
 
-with open(f'{contract_details_folder}/clearingHouseViewer.json', 'r') as clearinghouse_viewer_json:
+with open(f'{contract_details_folder}/ClearingHouseViewer.json', 'r') as clearinghouse_viewer_json:
     clearinghouse_viewer = json.load(clearinghouse_viewer_json)
 clearinghouse_viewer_contract = web3.eth.contract(address=clearinghouse_viewer['address'], abi=clearinghouse_viewer['abi'])
 
-with open(f'{contract_details_folder}/vault.json', 'r') as vault_json:
+with open(f'{contract_details_folder}/Vault.json', 'r') as vault_json:
     vault = json.load(vault_json)
 vault_contract = web3.eth.contract(address=vault['address'], abi=vault['abi'])
 
@@ -44,10 +44,10 @@ with open(f'./{os.getenv("PRIVATE_KEY")}') as private_key:
     account = Account.from_key(private_key)
     print(f'Using account {account.address}')
 
-with open(f'{contract_details_folder}/perp.json', 'r') as perp_json:
+with open(f'{contract_details_folder}/Perpetual.json', 'r') as perp_json:
     perp_abi = json.load(perp_json)['abi']
 
-with open(f'{contract_details_folder}/market.json', 'r') as market_json:
+with open(f'{contract_details_folder}/Market.json', 'r') as market_json:
     market_abi = json.load(market_json)['abi']
 
 if not os.path.isfile('state.json'):
