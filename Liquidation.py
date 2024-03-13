@@ -1,13 +1,9 @@
 import json
-import requests
 import time
-import datetime
 import os
-from dataclasses import dataclass
 from asyncio.exceptions import TimeoutError
 
 from web3 import Web3, Account
-from web3.middleware import geth_poa_middleware
 from dotenv import load_dotenv
 
 
@@ -39,10 +35,9 @@ with open(f'{contract_details_folder}/Vault.json', 'r') as vault_json:
     vault = json.load(vault_json)
 vault_contract = web3.eth.contract(address=vault['address'], abi=vault['abi'])
 
-# Setup wallet from keyfile
-with open(f'./{os.getenv("PRIVATE_KEY")}') as private_key:
-    account = Account.from_key(private_key)
-    print(f'Using account {account.address}')
+# Setup account from private key
+account = Account.from_key(os.getenv("PRIVATE_KEY"))
+print(f'Using account {account.address}')
 
 with open(f'{contract_details_folder}/Perpetual.json', 'r') as perp_json:
     perp_abi = json.load(perp_json)['abi']
@@ -149,7 +144,9 @@ def sync_all_events(to_block):
         elif log_type == 'LiquidationCall':
             handle_liquidation(log, lp_update_list)
         else:
-            print('big time error')
+            print('Something going very wrong, got unrecognized logs:')
+            print(log)
+            exit()
 
     for lp in lp_update_list:
         idx = lp[0]
