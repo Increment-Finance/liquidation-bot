@@ -617,58 +617,13 @@
     {
       "inputs": [
         {
-          "internalType": "address",
-          "name": "account",
-          "type": "address"
-        },
-        {
-          "internalType": "uint256",
-          "name": "amount",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "minAmount",
-          "type": "uint256"
-        },
-        {
-          "internalType": "enum LibPerpetual.Side",
-          "name": "direction",
-          "type": "uint8"
-        },
-        {
-          "internalType": "bool",
-          "name": "isLiquidation",
-          "type": "bool"
+          "internalType": "int256",
+          "name": "value",
+          "type": "int256"
         }
       ],
-      "name": "changePosition",
+      "name": "updateAnswer",
       "outputs": [
-        {
-          "internalType": "int256",
-          "name": "quoteProceeds",
-          "type": "int256"
-        },
-        {
-          "internalType": "int256",
-          "name": "baseProceeds",
-          "type": "int256"
-        },
-        {
-          "internalType": "int256",
-          "name": "profit",
-          "type": "int256"
-        },
-        {
-          "internalType": "int256",
-          "name": "tradingFeesPayed",
-          "type": "int256"
-        },
-        {
-          "internalType": "bool",
-          "name": "isPositionIncreased",
-          "type": "bool"
-        },
         {
           "internalType": "bool",
           "name": "isPositionClosed",
@@ -1159,12 +1114,12 @@
     },
     {
       "inputs": [],
-      "name": "indexPrice",
+      "name": "aggregator",
       "outputs": [
         {
-          "internalType": "int256",
+          "internalType": "address",
           "name": "",
-          "type": "int256"
+          "type": "address"
         }
       ],
       "stateMutability": "view",
