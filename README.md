@@ -3,18 +3,21 @@
 ## Prerequisites
 
 You will need Python 3 installed before proceeding with the rest of setup.
-You will also need GETH to create the required keyfile.
+You will also need a private key for a wallet with enough ETH for gas. Liquidations will stop if the account is allowed to run out of gas.
 
 ## Setup
-
 Install required Python packages by running:
-
 ```
 pip install -r requirements.txt
 ```
 
-Prepare a .env file with the following variables:
+Alternatively, the only external packages used can be installed by running:
+```
+pip install web3
+pip install python-dotenv
+```
 
+Prepare a .env file with the following variables:
 ```
 # URL of websocket supported RPC node, preferably localhost
 RPC = wss://example.rpc.address
@@ -22,8 +25,11 @@ RPC = wss://example.rpc.address
 # Private key to make transactions from
 PRIVATE_KEY = 0x....
 
-# Url of the subgraph
-SUBGRAPH_URL = https://api.thegraph.com/subgraphs/name/increment-finance/subgraph
+# Name of the network to use, either zksync or zktestnet to specify mainnet vs testnet
+NETWORK = zktestnet
+
+# Block the protocol was deployed at, used to set the start point for event syncing
+DEPLOYMENT_BLOCK = 0
 ```
 
 ## Running
