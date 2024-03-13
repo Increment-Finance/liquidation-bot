@@ -18,8 +18,6 @@ VBASE_INDEX = 1
 rpc_url = os.getenv('RPC')
 web3 = Web3(Web3.WebsocketProvider(rpc_url))
 
-deployment_block = int(os.getenv('DEPLOYMENT_BLOCK'))
-
 contract_details_folder = f'''deployments/{os.getenv('NETWORK')}'''
 
 # Load in contracts we will interact with
@@ -44,6 +42,9 @@ with open(f'{contract_details_folder}/Perpetual.json', 'r') as perp_json:
 
 with open(f'{contract_details_folder}/Market.json', 'r') as market_json:
     market_abi = json.load(market_json)['abi']
+
+with open(f'{contract_details_folder}/DeploymentBlock.txt', 'r') as deployment_block_txt:
+    deployment_block = int(deployment_block_txt.read())
 
 if not os.path.isfile('state.json'):
     with open('state.json', 'x') as f:
