@@ -28,7 +28,7 @@ PRIVATE_KEY = 0x....
 # Name of the network to use, either zksync or zktestnet to specify mainnet vs testnet
 NETWORK = zktestnet
 
-# Block the protocol was deployed at, used to set the start point for event syncing
+# Block the protocol was deployed at, used to set the start point for event syncing (920460 for mainnet)
 DEPLOYMENT_BLOCK = 0
 ```
 
