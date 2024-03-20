@@ -307,6 +307,12 @@ def handle_liquidation(event_log, lp_update_list):
     insurance_liquidation_reward = int(liquidation_reward_amount / (10**18) * state['liquidation_reward_insurance_share'])
     liquidator_liquidation_reward = liquidation_reward_amount - insurance_liquidation_reward
 
+    if liquidator not in state['reserves']:
+        state['reserves'][liquidator] = {}
+
+    if state['ua_address'] not in state['reserves'][liquidator]:
+        state['reserves'][liquidator][state['ua_address']] = 0
+
     state['reserves'][liquidator][state['ua_address']] += liquidator_liquidation_reward
     state['reserves'][liquidatee][state['ua_address']] += profit
 
