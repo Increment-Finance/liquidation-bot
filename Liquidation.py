@@ -475,7 +475,7 @@ def is_position_valid(address):
     margin_required = get_total_margin_requirement(address, min_margin)
 
     free_collateral = min(total_collateral_value, total_collateral_value + pnl) - margin_required
-    return free_collateral >= -0.5 * (10**18)
+    return free_collateral >= -0.05 * (10**18)
 
 def get_pending_funding_payments(address):
     trader_funding = 0
@@ -603,12 +603,16 @@ def main():
                 if not is_position_valid(trader):
                     status = liquidate_position(trader, int(idx), True)
                     print(f'Liquidated trader on market {idx}: {trader}. Liquidation status: {status}.')
+                    if status == 0: # Safety measure to avoid rapid firing failed transactions
+                        time.sleep(60)
 
             # Check LP positions
             for lp in state['lp_positions'][idx]:
                 if not is_position_valid(lp):
                     status = liquidate_position(lp, int(idx), False)
                     print(f'Liquidated LP on market {idx}: {lp}. Liquidation status: {status}.')
+                    if status == 0: # Safety measure to avoid rapid firing failed transactions
+                        time.sleep(60)
 
         # Heartbeat
         if time.time() - last_heartbeat > 90:
@@ -629,3 +633,4 @@ if __name__ == '__main__':
             main()
         except Exception as e:
            print(f'Exception occured: {e}\n')
+           time.sleep(60)
