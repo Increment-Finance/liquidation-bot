@@ -475,7 +475,7 @@ def is_position_valid(address):
     margin_required = get_total_margin_requirement(address, min_margin)
 
     free_collateral = min(total_collateral_value, total_collateral_value + pnl) - margin_required
-    return free_collateral >= 0
+    return free_collateral >= -0.5 * (10**18)
 
 def get_pending_funding_payments(address):
     trader_funding = 0
