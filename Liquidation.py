@@ -69,7 +69,7 @@ transaction_dict = {
     'chainId': web3.eth.chain_id,
     'nonce': web3.eth.get_transaction_count(account.address),
     'from': account.address,
-    'gas': 3*(10**6),
+    'gas': 10*(10**6),
     'maxPriorityFeePerGas': 0,
     'maxFeePerGas': 2*web3.eth.gas_price
 }
